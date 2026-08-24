@@ -679,6 +679,14 @@
       });
     }
 
+    // Open Aternos for Verification
+    const btnOpenAternos = document.getElementById('btn-open-aternos');
+    if (btnOpenAternos) {
+      btnOpenAternos.addEventListener('click', () => {
+        showToast('تم فتح نافذة اتيرنوس. قم بحل التحقق بالمتصفح ثم اضغط Reload Session للمتابعة فوراً.', 'info', 6000);
+      });
+    }
+
     // Screenshot Controls
     if (el.btnRefreshScreenshot) {
       el.btnRefreshScreenshot.addEventListener('click', refreshScreenshot);

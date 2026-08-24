@@ -1,32 +1,9 @@
 # =============================================================================
-# Multi-Stage Production Dockerfile for Aternos 24/7 Keep-Alive Automation
-# Optimized for <250MB RAM footprint, zero-overhead execution & cloud deployment
+# Production Dockerfile for Aternos 24/7 Keep-Alive Automation
+# Fully compatible with Render, Railway, Fly.io, and Cloud PaaS
 # =============================================================================
 
-# --- Stage 1: Build & Dependency Wheel Cache ---
-FROM python:3.11-slim-bullseye AS builder
-
-WORKDIR /build
-
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
-
-COPY requirements.txt .
-RUN pip install --prefix=/install -r requirements.txt
-
-
-# --- Stage 2: Minimal Secure Runtime Stage ---
-FROM python:3.11-slim-bullseye AS runtime
-
-LABEL maintainer="Aternos Keep-Alive Automation Team"
-LABEL description="24/7 Aternos Keep-Alive Bot & Web Dashboard"
+FROM python:3.11-slim-bookworm
 
 WORKDIR /app
 
@@ -40,57 +17,30 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     EMERGENCY_THRESHOLD=30 \
     COOKIE_FILE_PATH=/app/data/cookies.json \
     SCREENSHOT_DIR=/app/data/screenshots \
-    PLAYWRIGHT_BROWSERS_PATH=/app/.cache/ms-playwright \
     PYTHONPATH=/app
 
-# Install runtime system packages, dumb-init, curl for healthchecks & Chromium dependencies
+# Install base utilities
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    dumb-init \
     curl \
     ca-certificates \
-    libnss3 \
-    libnspr4 \
-    libatk1.0-0 \
-    libatk-bridge2.0-0 \
-    libcups2 \
-    libdrm2 \
-    libxkbcommon0 \
-    libxcomposite1 \
-    libxdamage1 \
-    libxfixes3 \
-    libxrandr2 \
-    libgbm1 \
-    libpango-1.0-0 \
-    libcairo2 \
-    libasound2 \
-    fonts-liberation \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy installed Python wheels from builder
-COPY --from=builder /install /usr/local
+# Install Python requirements
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Create non-privileged service user and application directories
-RUN groupadd -g 1001 appgroup && \
-    useradd -u 1001 -g appgroup -m -s /bin/bash appuser && \
-    mkdir -p /app/data /app/data/screenshots /app/.cache/ms-playwright && \
-    chown -R appuser:appgroup /app
+# Install Playwright Chromium with all system dependencies
+RUN python -m playwright install --with-deps chromium
 
-# Switch to non-root user
-USER appuser
+# Create data directories
+RUN mkdir -p /app/data /app/data/screenshots
 
-# Install headless Chromium browser binary only
-RUN python -m playwright install chromium
-
-# Copy application source code
-COPY --chown=appuser:appgroup src/ /app/src/
+# Copy application files
+COPY . .
 
 # Expose web dashboard port
 EXPOSE 8000
 
-# Docker healthcheck probe against REST health endpoint
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD curl -f http://localhost:${PORT:-8000}/api/health || exit 1
-
-# Process supervisor entrypoint
-ENTRYPOINT ["/usr/bin/dumb-init", "--"]
+# Start Keep-Alive Web Server
 CMD ["python", "-m", "src.main"]
+

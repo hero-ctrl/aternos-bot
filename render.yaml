@@ -1,0 +1,39 @@
+services:
+  - type: web
+    name: aternos-247-bot
+    env: docker
+    plan: free
+    region: frankfurt
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    envVars:
+      - key: PORT
+        value: 8000
+      - key: HOST
+        value: 0.0.0.0
+      - key: ATERNOS_SESSION
+        sync: false
+      - key: ATERNOS_SEC_TOKEN
+        sync: false
+      - key: ATERNOS_SERVER_ID
+        sync: false
+      - key: CHECK_INTERVAL
+        value: "5.0"
+      - key: COUNTDOWN_THRESHOLD
+        value: "180"
+      - key: EMERGENCY_THRESHOLD
+        value: "30"
+      - key: HEADLESS
+        value: "true"
+      - key: MOCK_MODE
+        value: "false"
+      - key: AUTO_START_ON_OFFLINE
+        value: "false"
+      - key: AUTO_CONFIRM_QUEUE
+        value: "true"
+      - key: LOG_LEVEL
+        value: "INFO"
+    disk:
+      name: aternos-bot-data
+      mountPath: /app/data
+      sizeGB: 1

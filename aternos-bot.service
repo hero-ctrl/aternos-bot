@@ -1,0 +1,29 @@
+[Unit]
+Description=Aternos 24/7 Keep-Alive Automation & Web Dashboard
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=aternos
+Group=aternos
+WorkingDirectory=/opt/aternos-bot
+EnvironmentFile=/opt/aternos-bot/.env
+ExecStart=/opt/aternos-bot/venv/bin/python -m src.main
+Restart=always
+RestartSec=10
+KillMode=process
+TimeoutStopSec=30
+
+# Sandboxing & Security hardening
+ProtectSystem=full
+ProtectHome=true
+NoNewPrivileges=true
+PrivateTmp=true
+
+# Resource limits (prevent memory leaks)
+MemoryLimit=512M
+CPUQuota=100%
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,33 @@
+name: aternos-247-bot
+services:
+  - name: aternos-bot
+    type: web
+    docker:
+      dockerfile: Dockerfile
+    regions:
+      - fra
+    instance_type: nano
+    routes:
+      - path: /
+        port: 8000
+    health_checks:
+      - http:
+          path: /api/health
+          port: 8000
+        interval: 30
+        timeout: 5
+    env:
+      - key: PORT
+        value: "8000"
+      - key: HOST
+        value: "0.0.0.0"
+      - key: HEADLESS
+        value: "true"
+      - key: CHECK_INTERVAL
+        value: "5.0"
+      - key: COUNTDOWN_THRESHOLD
+        value: "180"
+      - key: EMERGENCY_THRESHOLD
+        value: "30"
+      - key: LOG_LEVEL
+        value: "INFO"

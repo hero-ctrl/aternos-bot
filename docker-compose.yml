@@ -1,0 +1,48 @@
+version: "3.8"
+
+services:
+  aternos-bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: aternos_247_bot
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8000}:8000"
+    environment:
+      - PORT=8000
+      - HOST=0.0.0.0
+      - ATERNOS_SESSION=${ATERNOS_SESSION:-}
+      - ATERNOS_SEC_TOKEN=${ATERNOS_SEC_TOKEN:-}
+      - ATERNOS_USER=${ATERNOS_USER:-}
+      - ATERNOS_PASSWORD=${ATERNOS_PASSWORD:-}
+      - ATERNOS_SERVER_ID=${ATERNOS_SERVER_ID:-}
+      - CHECK_INTERVAL=${CHECK_INTERVAL:-5.0}
+      - COUNTDOWN_THRESHOLD=${COUNTDOWN_THRESHOLD:-180}
+      - EMERGENCY_THRESHOLD=${EMERGENCY_THRESHOLD:-30}
+      - HEADLESS=${HEADLESS:-true}
+      - MOCK_MODE=${MOCK_MODE:-false}
+      - AUTO_START_ON_OFFLINE=${AUTO_START_ON_OFFLINE:-false}
+      - AUTO_CONFIRM_QUEUE=${AUTO_CONFIRM_QUEUE:-true}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - COOKIE_FILE_PATH=/app/data/cookies.json
+      - SCREENSHOT_DIR=/app/data/screenshots
+    volumes:
+      - aternos_data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
+        reservations:
+          memory: 150M
+
+volumes:
+  aternos_data:
+    driver: local

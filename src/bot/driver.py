@@ -142,18 +142,28 @@ class AternosDriver:
             "--no-zygote",
         ]
 
+        import os
+        env_headless = os.environ.get("HEADLESS", "").strip().lower()
+        if env_headless in ("false", "0", "no"):
+            is_headless = False
+        else:
+            is_headless = self.config.HEADLESS
+
         self._browser = await self._playwright.chromium.launch(
-            headless=self.config.HEADLESS,
+            headless=is_headless,
             args=launch_args,
             timeout=int(self.config.BROWSER_TIMEOUT * 1000)
         )
 
-        self._context = await self._browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-            viewport={"width": 1280, "height": 800},
-            locale="en-US",
-            timezone_id="UTC"
-        )
+        ctx_kwargs = {
+            "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            "locale": "en-US",
+            "timezone_id": "UTC",
+        }
+        if is_headless:
+            ctx_kwargs["viewport"] = {"width": 1280, "height": 800}
+
+        self._context = await self._browser.new_context(**ctx_kwargs)
 
         # Inject stealth scripts into all new frames and pages
         await self._context.add_init_script(STEALTH_INIT_SCRIPT)

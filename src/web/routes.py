@@ -255,6 +255,23 @@ async def action_reload_session(request: Request) -> Dict[str, Any]:
     }
 
 
+@router.post("/api/action/launch-visible-browser", tags=["Actions"])
+async def action_launch_visible_browser(request: Request) -> Dict[str, Any]:
+    """
+    Spawns Run_Visible_Browser.bat to open the real browser window on desktop.
+    """
+    import subprocess
+    import os
+    bat_path = os.path.join(os.getcwd(), "Run_Visible_Browser.bat")
+    try:
+        if os.name == "nt":
+            subprocess.Popen(["cmd.exe", "/c", "start", bat_path], shell=True)
+            return {"success": True, "message": "Visible browser window launched on desktop"}
+    except Exception as e:
+        return {"success": False, "message": f"Failed to launch: {e}"}
+    return {"success": False, "message": "Visible mode is available on Windows desktop"}
+
+
 # ===========================================================================
 # 3. Log History and Management Endpoints
 # ===========================================================================
@@ -350,6 +367,55 @@ async def get_screenshot(request: Request) -> Response:
             "Expires": "0",
         },
     )
+
+
+@router.post("/api/viewport/click", tags=["Diagnostics"])
+async def viewport_click(request: Request) -> Dict[str, Any]:
+    """
+    Forwards a mouse click from the dashboard viewport image to the real browser page.
+    Accepts { x_pct: float, y_pct: float } (0.0 to 1.0) representing relative position on the screenshot.
+    """
+    engine = _get_engine(request)
+    if engine is None:
+        return {"success": False, "message": "Engine not available"}
+
+    try:
+        body = await request.json()
+        x_pct = float(body.get("x_pct", 0))
+        y_pct = float(body.get("y_pct", 0))
+    except Exception:
+        return {"success": False, "message": "Invalid body. Expected {x_pct, y_pct}"}
+
+    # Get page from driver
+    driver = getattr(engine, "_driver", None)
+    if driver is None:
+        return {"success": False, "message": "Driver not available"}
+
+    page = getattr(driver, "_page", None)
+    if page is None or page.is_closed():
+        return {"success": False, "message": "Browser page not active"}
+
+    try:
+        viewport = page.viewport_size
+        if viewport is None:
+            viewport = {"width": 1280, "height": 800}
+
+        actual_x = int(x_pct * viewport["width"])
+        actual_y = int(y_pct * viewport["height"])
+
+        await page.mouse.click(actual_x, actual_y)
+
+        # Take fresh screenshot after click
+        await page.wait_for_timeout(800)
+
+        return {
+            "success": True,
+            "message": f"Clicked at ({actual_x}, {actual_y}) on browser page",
+            "x": actual_x,
+            "y": actual_y,
+        }
+    except Exception as e:
+        return {"success": False, "message": str(e)}
 
 
 # ===========================================================================

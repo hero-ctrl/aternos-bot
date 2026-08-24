@@ -679,11 +679,12 @@
       });
     }
 
-    // Open Aternos for Verification
-    const btnOpenAternos = document.getElementById('btn-open-aternos');
-    if (btnOpenAternos) {
-      btnOpenAternos.addEventListener('click', () => {
-        showToast('تم فتح نافذة اتيرنوس. قم بحل التحقق بالمتصفح ثم اضغط Reload Session للمتابعة فوراً.', 'info', 6000);
+    // Launch Visible Browser Button
+    const btnLaunchVisible = document.getElementById('btn-launch-visible');
+    if (btnLaunchVisible) {
+      btnLaunchVisible.addEventListener('click', async () => {
+        showToast('جاري فتح نافذة المتصفح المرئي على شاشتك...', 'info', 4000);
+        await dispatchAction('/api/action/launch-visible-browser', null, btnLaunchVisible, 'Visible browser launched');
       });
     }
 
@@ -868,6 +869,84 @@
     // Initialize real-time streams
     initRealtimeConnection();
   }
+
+  // ========================================================================
+  // 10. Interactive Viewport Control Mode
+  // ========================================================================
+  (function setupViewportControlMode() {
+    const btnControl = document.getElementById('btn-control-mode');
+    const banner     = document.getElementById('control-mode-banner');
+    const container  = document.getElementById('screenshot-container');
+    const img        = document.getElementById('screenshot-img');
+    const ripple     = document.getElementById('click-ripple');
+    const hoverOverlay = document.getElementById('viewport-hover-overlay');
+
+    if (!btnControl || !container || !img) return;
+
+    let controlActive = false;
+
+    function setControlMode(active) {
+      controlActive = active;
+      if (active) {
+        btnControl.textContent = '⛔ إيقاف التحكم المباشر';
+        btnControl.classList.remove('bg-slate-800', 'border-slate-700', 'text-slate-300');
+        btnControl.classList.add('bg-sky-700', 'border-sky-500', 'text-white');
+        banner.classList.remove('hidden');
+        container.classList.add('cursor-crosshair', 'border-sky-500');
+        container.classList.remove('border-slate-700');
+        if (hoverOverlay) hoverOverlay.classList.add('hidden');
+      } else {
+        btnControl.innerHTML = `<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5"/></svg> تفعيل التحكم المباشر بالمتصفح`;
+        btnControl.classList.add('bg-slate-800', 'border-slate-700', 'text-slate-300');
+        btnControl.classList.remove('bg-sky-700', 'border-sky-500', 'text-white');
+        banner.classList.add('hidden');
+        container.classList.remove('cursor-crosshair', 'border-sky-500');
+        container.classList.add('border-slate-700');
+        if (hoverOverlay) hoverOverlay.classList.remove('hidden');
+      }
+    }
+
+    btnControl.addEventListener('click', () => setControlMode(!controlActive));
+
+    container.addEventListener('click', async (e) => {
+      if (!controlActive) {
+        // First click activates control mode
+        setControlMode(true);
+        return;
+      }
+
+      const rect = img.getBoundingClientRect();
+      const x_pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+      const y_pct = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
+
+      // Show ripple at click position
+      if (ripple) {
+        ripple.style.left = (e.clientX - rect.left - 12) + 'px';
+        ripple.style.top  = (e.clientY - rect.top - 12) + 'px';
+        ripple.classList.remove('hidden');
+        setTimeout(() => ripple.classList.add('hidden'), 900);
+      }
+
+      try {
+        const res = await fetch('/api/viewport/click', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ x_pct, y_pct }),
+        });
+        const data = await res.json();
+        if (data.success) {
+          // Refresh screenshot immediately after click
+          setTimeout(() => {
+            if (img) img.src = '/api/screenshot?t=' + Date.now();
+          }, 1000);
+        } else {
+          console.warn('[Viewport Click]', data.message);
+        }
+      } catch (err) {
+        console.error('[Viewport Click] fetch error:', err);
+      }
+    });
+  })();
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', bootstrap);

@@ -204,28 +204,62 @@ class AternosDriver:
             url = self._page.url.lower()
             title = (await self._page.title()).lower()
             
-            # Check if page is stuck on Cloudflare challenge
-            if "just a moment" in title or "security verification" in title or "cloudflare" in url or "challenges" in url:
-                logger.info("Cloudflare Turnstile challenge detected! Attempting automatic bypass...")
+            # Check title, url, or content for Cloudflare security verification
+            is_cf = ("just a moment" in title or "security verification" in title or "cloudflare" in url or "challenges" in url)
+            if not is_cf:
+                try:
+                    has_cf_elem = await self._page.query_selector("iframe[src*='cloudflare'], iframe[src*='turnstile'], iframe[title*='Cloudflare'], iframe[title*='challenge'], #turnstile-wrapper, .cf-turnstile, #challenge-stage")
+                    if has_cf_elem:
+                        is_cf = True
+                    else:
+                        body_text = await self._page.evaluate("() => document.body ? document.body.innerText.toLowerCase() : ''")
+                        if "verify you are human" in body_text or "security verification" in body_text or "malicious bots" in body_text:
+                            is_cf = True
+                except Exception:
+                    pass
 
-                # 1. Search frames for the checkbox
+            if is_cf:
+                logger.info("Cloudflare Turnstile challenge detected! Executing automated natural click on checkbox...")
+
+                # 1. Search frames for checkbox with direct click
                 for frame in self._page.frames:
                     try:
-                        checkbox = await frame.query_selector("input[type='checkbox'], span.mark, .ctp-checkbox-label, #challenge-stage, .cb-lb")
+                        checkbox = await frame.query_selector("input[type='checkbox'], span.mark, .ctp-checkbox-label, #challenge-stage, .cb-lb, label")
                         if checkbox and await checkbox.is_visible():
-                            await checkbox.click()
-                            logger.info("Clicked Cloudflare Turnstile verification box inside iframe.")
-                            await self._page.wait_for_timeout(3000)
+                            await checkbox.click(force=True)
+                            logger.info("Clicked Cloudflare Turnstile verification checkbox inside iframe.")
+                            await self._page.wait_for_timeout(3500)
                             return True
                     except Exception:
                         pass
 
-                # 2. Try clicking Turnstile widget area directly
+                # 2. Try Frame Locator
+                for sel in [
+                    "iframe[src*='challenges.cloudflare.com']",
+                    "iframe[src*='turnstile']",
+                    "iframe[title*='Cloudflare']",
+                    "iframe[title*='security challenge']",
+                    "iframe[title*='challenge']"
+                ]:
+                    try:
+                        loc = self._page.frame_locator(sel).locator("input[type='checkbox'], span.mark, label, #challenge-stage, .ctp-checkbox-label").first
+                        if await loc.is_visible(timeout=1000):
+                            await loc.click(force=True)
+                            logger.info(f"Clicked Cloudflare checkbox via frame locator {sel}.")
+                            await self._page.wait_for_timeout(3500)
+                            return True
+                    except Exception:
+                        pass
+
+                # 3. Direct mouse click on Turnstile iframe bounding box (Natural Mouse Simulation)
                 cf_selectors = [
                     "iframe[src*='challenges.cloudflare.com']",
                     "iframe[src*='turnstile']",
+                    "iframe[title*='Cloudflare']",
+                    "iframe[title*='challenge']",
                     "#cf-turnstile",
                     ".cf-turnstile-wrapper",
+                    "#turnstile-wrapper",
                     "#challenge-stage",
                     "div.cf-turnstile",
                 ]
@@ -235,9 +269,14 @@ class AternosDriver:
                         if elem and await elem.is_visible():
                             box = await elem.bounding_box()
                             if box:
-                                await self._page.mouse.click(box["x"] + 30, box["y"] + (box["height"] / 2))
-                                logger.info(f"Clicked Cloudflare challenge widget area via {sel}.")
-                                await self._page.wait_for_timeout(3000)
+                                target_x = box["x"] + 28
+                                target_y = box["y"] + (box["height"] / 2)
+                                await self._page.mouse.move(target_x, target_y, steps=5)
+                                await self._page.mouse.down()
+                                await asyncio.sleep(0.1)
+                                await self._page.mouse.up()
+                                logger.info(f"Natural mouse clicked Cloudflare Turnstile checkbox at ({target_x:.1f}, {target_y:.1f})")
+                                await self._page.wait_for_timeout(3500)
                                 return True
                     except Exception:
                         continue

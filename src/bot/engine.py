@@ -192,38 +192,39 @@ class KeepAliveEngine:
             self.logger_hub.broadcast_state(self.state)
 
     async def _handle_online_keepalive(self) -> None:
-        """Evaluates countdown threshold AND checks for visible +1 button to execute click automatically."""
+        """Evaluates countdown threshold AND checks for visible +1 button with multi-tier fail-safe safety."""
         if not self.state.is_keepalive_active:
             return
 
         countdown = self.state.countdown_seconds
         is_btn_visible = await self._driver.is_plus_one_button_visible()
 
-        # Cooldown guard: Avoid rapid spamming if clicked in the last 8 seconds
-        now = datetime.now(timezone.utc)
-        if self.state.last_plus_one_click:
-            elapsed = (now - self.state.last_plus_one_click).total_seconds()
-            if elapsed < 8.0:
-                return
+        is_emergency = (countdown is not None and countdown <= 35)
+
+        # Cooldown guard: Only apply cooldown when NOT in emergency
+        if not is_emergency:
+            now = datetime.now(timezone.utc)
+            if self.state.last_plus_one_click:
+                elapsed = (now - self.state.last_plus_one_click).total_seconds()
+                if elapsed < 6.0:
+                    return
 
         should_click = False
         reason = ""
-        is_emergency = False
 
-        if is_btn_visible:
+        if is_emergency:
+            # Multi-layer Emergency Safety: Countdown is <= 35s! Click immediately without any delay
+            should_click = True
+            reason = f"CRITICAL EMERGENCY: Countdown at {countdown}s <= 35s! Executing immediate multi-tier +1 click"
+        elif is_btn_visible:
             # Humanized delay between 59s and 50s
             if countdown is not None and countdown >= 50:
-                # Randomize wait time to simulate human reaction (e.g. click at random second between 50s and 57s)
-                max_delay = min(float(countdown - 48), 7.5)
+                max_delay = min(float(countdown - 48), 6.0)
                 if max_delay > 1.0:
-                    jitter = random.uniform(1.2, max_delay)
+                    jitter = random.uniform(1.0, max_delay)
                     await asyncio.sleep(jitter)
             should_click = True
-            reason = f"'+1' button is visible on status bar (Humanized click window 50s-59s, Timer: {self.state.countdown_text or 'active'})"
-        elif countdown is not None and countdown <= self.config.EMERGENCY_THRESHOLD:
-            should_click = True
-            is_emergency = True
-            reason = f"EMERGENCY: Countdown critical ({countdown}s <= {self.config.EMERGENCY_THRESHOLD}s)"
+            reason = f"'+1' button detected on server status bar (Timer: {self.state.countdown_text or 'active'})"
 
         if should_click:
             self._app_logger.info(
@@ -234,7 +235,7 @@ class KeepAliveEngine:
             if res.success:
                 self._app_logger.success(f"Automated '+1' click succeeded: {res.message}", source="engine")
             else:
-                self._app_logger.warning(f"Automated '+1' click attempt failed: {res.message}", source="engine")
+                self._app_logger.warning(f"Automated '+1' click attempt failed: {res.message} - Retrying next cycle immediately", source="engine")
 
     async def _handle_queue_state(self) -> None:
         """Handles queue confirmation if auto-confirm is enabled."""
@@ -351,21 +352,23 @@ class KeepAliveEngine:
         return False
 
     def _calculate_next_sleep_interval(self) -> float:
-        """Dynamically tunes sleep duration to balance responsiveness and low CPU/RAM usage."""
-        if self.state.status == ServerStatus.ONLINE and self.state.countdown_seconds is not None:
-            if self.state.countdown_seconds <= self.config.EMERGENCY_THRESHOLD:
-                return 1.0  # Fast polling during emergency
-            elif self.state.countdown_seconds <= self.config.COUNTDOWN_THRESHOLD:
-                return 2.0
-            else:
-                # Safe zone: calculate optimal sleep time before threshold
-                safe_lead = max(2.0, float(self.state.countdown_seconds - self.config.COUNTDOWN_THRESHOLD))
-                return min(self.config.CHECK_INTERVAL, safe_lead)
+        """Dynamically tunes sleep duration to guarantee zero-miss +1 clicks."""
+        if self.state.status == ServerStatus.ONLINE:
+            cd = self.state.countdown_seconds
+            if cd is not None:
+                if cd <= 65:
+                    return 1.0  # Ultra-fast 1s polling when in +1 window or emergency
+                elif cd <= 120:
+                    return 2.0
+                else:
+                    safe_lead = max(2.0, float(cd - 70))
+                    return min(3.0, safe_lead)
+            return 1.5
 
-        if self.state.status in (ServerStatus.IN_QUEUE, ServerStatus.LOADING):
+        if self.state.status in (ServerStatus.IN_QUEUE, ServerStatus.LOADING, ServerStatus.OFFLINE):
             return 2.0
 
-        return self.config.CHECK_INTERVAL
+        return 2.5
 
     async def _poll_loop(self) -> None:
         """Continuous background worker loop."""

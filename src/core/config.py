@@ -42,7 +42,7 @@ class Settings(BaseSettings):
     # Browser & Automation Behavior
     HEADLESS: bool = Field(default=True, description="Run browser in headless mode")
     MOCK_MODE: bool = Field(default=False, description="Enable offline mock simulation mode")
-    AUTO_START_ON_OFFLINE: bool = Field(default=False, description="Auto-start server if offline")
+    AUTO_START_ON_OFFLINE: bool = Field(default=True, description="Auto-start server if offline")
     AUTO_CONFIRM_QUEUE: bool = Field(default=True, description="Auto-confirm queue dialogs")
     BROWSER_TIMEOUT: float = Field(default=30.0, ge=5.0, le=120.0, description="Browser action timeout in seconds")
 

@@ -182,9 +182,6 @@ class AternosDriver:
 
         self._page = await self._context.new_page()
 
-        # Set up memory-saving adblock route abortion
-        await self._setup_route_interception(self._page)
-
         target_url = self.config.ATERNOS_SERVER_URL
         if self.config.ATERNOS_SERVER_ID:
             target_url = f"{self.config.ATERNOS_BASE_URL}/server/{self.config.ATERNOS_SERVER_ID}/"
@@ -198,15 +195,65 @@ class AternosDriver:
             logger.warning(f"Initial navigation encountered issue: {e}")
             self._is_ready = True
 
-    async def _setup_route_interception(self, page: Any) -> None:
-        """Allows normal browser network traffic to prevent anti-adblock detection."""
-        # Intentionally no-op to let Chromium act as a standard browser without triggering Aternos adblock alarms
-        pass
+    async def handle_cloudflare_challenge(self) -> bool:
+        """Automatically detects and solves Cloudflare Turnstile verification checkbox."""
+        if not self._page or self._page.is_closed():
+            return False
+
+        try:
+            url = self._page.url.lower()
+            title = (await self._page.title()).lower()
+            
+            # Check if page is stuck on Cloudflare challenge
+            if "just a moment" in title or "security verification" in title or "cloudflare" in url or "challenges" in url:
+                logger.info("Cloudflare Turnstile challenge detected! Attempting automatic bypass...")
+
+                # 1. Search frames for the checkbox
+                for frame in self._page.frames:
+                    try:
+                        checkbox = await frame.query_selector("input[type='checkbox'], span.mark, .ctp-checkbox-label, #challenge-stage, .cb-lb")
+                        if checkbox and await checkbox.is_visible():
+                            await checkbox.click()
+                            logger.info("Clicked Cloudflare Turnstile verification box inside iframe.")
+                            await self._page.wait_for_timeout(3000)
+                            return True
+                    except Exception:
+                        pass
+
+                # 2. Try clicking Turnstile widget area directly
+                cf_selectors = [
+                    "iframe[src*='challenges.cloudflare.com']",
+                    "iframe[src*='turnstile']",
+                    "#cf-turnstile",
+                    ".cf-turnstile-wrapper",
+                    "#challenge-stage",
+                    "div.cf-turnstile",
+                ]
+                for sel in cf_selectors:
+                    try:
+                        elem = await self._page.query_selector(sel)
+                        if elem and await elem.is_visible():
+                            box = await elem.bounding_box()
+                            if box:
+                                await self._page.mouse.click(box["x"] + 30, box["y"] + (box["height"] / 2))
+                                logger.info(f"Clicked Cloudflare challenge widget area via {sel}.")
+                                await self._page.wait_for_timeout(3000)
+                                return True
+                    except Exception:
+                        continue
+
+        except Exception as e:
+            logger.debug(f"Cloudflare solver exception: {e}")
+
+        return False
 
     async def dismiss_adblock_modal(self) -> bool:
         """Dismisses anti-adblock modal dialog or full-screen warning if present and purges overlay DOM."""
         if not self._page or self._page.is_closed():
             return False
+
+        # Check and handle Cloudflare challenge first
+        await self.handle_cloudflare_challenge()
 
         # 1. Try clicking standard and Arabic selectors
         for selector in ADBLOCK_DISMISS_SELECTORS:
